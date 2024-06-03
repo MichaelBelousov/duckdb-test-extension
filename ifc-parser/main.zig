@@ -55,6 +55,10 @@ pub const ParseCtx = struct {
     self.pos +|= 1;
   }
 
+  pub fn expectAdvance(self: *Self) !u8 {
+    return self.advance() orelse error.UnexpectedEof;
+  }
+
   /// advance until the next non-whitespace
   pub fn advanceSkipWs(self: *Self) ?u8 {
     var curr = peekCurrent();
@@ -80,6 +84,7 @@ pub const ParseCtx = struct {
   pub fn expectTerminator(self: *Self, token: []const u8) !void {
     if (!try self.nextTokenSkipWs(";"))
       return error.MissingTerminator;
+    try self.consumeToken(";");
   }
 
   /// consume a token (advance by its length)
@@ -87,21 +92,44 @@ pub const ParseCtx = struct {
     var i = token.len;
     while (i > 0)
         : (i -= 1) {
-      self.advance();
+      try self.advance();
     }
   }
 
-  pub fn nextTokenSkipWs(self: *Self, token: []const u8) !bool {
-    const curr = self.advanceSkipWs();
-    if (curr == null) return error.UnexpectedEof;
-    if (std.mem.eql(u8, self.src[self.pos..self.pos+token.len], token))
-    if (curr.? != ';') return error.MissingTerminator;
+  pub fn nextIdentSkipWs(self: *Self) ![]const u8 {
+    const first = self.advanceSkipWs();
+    const first_pos = self.pos;
+
+    if (first == null)
+      return error.UnexpectedEof;
+
+    var curr = first.?;
+
+    while (true)
+        : (curr = try self.expectAdvance())
+    {
+      switch (curr) {
+        'a'..'z', 'A'..'Z', '0'..'9', '_',  => {
+          continue;
+        },
+        _ => break,
+      }
+    }
+
+    const ident = src[first_pos...pos];
+
+    return ident;
   }
+
+  pub const Element = struct {{
+    name: []const u8,
+    args: []const Expr,
+  };
 
   /// an  element is like:
   /// ELEMNAME(arg1, arg2)
   pub fn parseElement(ctx: *ParseCtx) !Element {
-
+    const ident = self.nextIdentSkipWs(ctx);
     try ctx.expectTerminator();
   }
 
