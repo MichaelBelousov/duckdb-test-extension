@@ -48,7 +48,7 @@ const ParseDiagnostic = struct {
             \\  | {s}
             \\    {}^
             \\
-        , .{ self.message, self.loc, try self.loc.containing_line(self.src), SpacePrint.init(self.loc.col - 2) });
+        , .{ self.message, self.loc, try self.loc.containing_line(self.src), SpacePrint.init(self.loc.col - 1) });
     }
 };
 
@@ -103,24 +103,20 @@ pub const ParseCtx = struct {
         return self.advance() orelse error.UnexpectedEof;
     }
 
-    /// advance until the next non-whitespace
-    pub fn advanceSkipWs(self: *Self) ?u8 {
+    /// advance until the next (or current) non-whitespace
+    pub fn skipWs(self: *Self) ?u8 {
         var curr = self.peekCurrent();
 
-        while (curr != null) : (curr = self.advance()) {
-            switch (curr.?) {
-                ' ', '\n', '\t' => {
-                    continue;
-                },
-                else => break,
-            }
-        }
+        while (curr != null and switch (curr.?) {
+            ' ', '\n', '\t' => true,
+            else => false,
+        }) : (curr = self.advance()) {}
 
         return curr;
     }
 
     pub fn nextTokenSkipWs(self: *Self, token: []const u8) !bool {
-        const curr = self.advanceSkipWs();
+        const curr = self.skipWs();
         if (curr == null) {
             return error.UnexpectedEof;
         }
@@ -143,7 +139,7 @@ pub const ParseCtx = struct {
     }
 
     pub fn nextIdentSkipWs(self: *Self) ![]const u8 {
-        const first = self.advanceSkipWs();
+        const first = self.skipWs();
         const first_pos = self.pos;
 
         if (first == null)
@@ -212,14 +208,16 @@ pub const Ifc = struct {
 
         pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Header {
             _ = opts;
+
             if (!try ctx.nextTokenSkipWs("HEADER"))
                 return error.MissingHeader;
             try ctx.consumeToken("HEADER");
             try ctx.expectTerminator();
 
+            // FIXME: this should be an element parse
             if (!try ctx.nextTokenSkipWs("FILE_DESCRIPTION"))
-                return error.MissingHeader;
-            try ctx.consumeToken("FILE");
+                return error.MissingFileDescription;
+            try ctx.consumeToken("FILE_DESCRIPTION");
             try ctx.expectTerminator();
 
             if (!try ctx.nextTokenSkipWs("ENDSEC"))
@@ -251,12 +249,24 @@ pub const Ifc = struct {
             ctx.diagnostics.loc = ctx.as_loc();
             ctx.diagnostics.src = ctx.src;
             std.debug.print("{}", .{ctx.diagnostics});
+            std.debug.print("{s}", .{ctx.src[ctx.pos .. ctx.pos + 4]});
+            std.debug.print("\n", .{});
         }
-        const iso = try ctx.nextIdentSkipWs();
+
+        const isoToken = "ISO-10303-21";
+        if (!try ctx.nextTokenSkipWs(isoToken))
+            return error.BadIsoDeclaration;
+        try ctx.consumeToken(isoToken);
         try ctx.expectTerminator();
+
+        std.debug.print("{s}", .{ctx.src[ctx.pos .. ctx.pos + 4]});
+        std.debug.print("\n", .{});
+
+        const header = try Header.parse(ctx, opts);
+
         return Self{
-            .iso = iso,
-            .header = try Header.parse(ctx, opts),
+            .iso = isoToken,
+            .header = header,
             .data = .{
                 .objects = &.{},
             },
