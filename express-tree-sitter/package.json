@@ -1,0 +1,32 @@
+{
+  "name": "tree-sitter-express",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bindings/node",
+  "scripts": {
+    "build": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "pretty": "tree-sitter highlight"
+  },
+  "keywords": [],
+  "author": {
+    "email": "me@mikemikeb.com",
+    "name": "Michael Belousov"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "tree-sitter-cli": "^0.20.7"
+  },
+  "dependencies": {
+    "nan": "^2.17.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.express",
+      "file-types": [
+        "exp"
+      ],
+      "injection-reject": "express"
+    }
+  ]
+}
