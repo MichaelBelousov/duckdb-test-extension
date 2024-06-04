@@ -30,6 +30,11 @@ pub const ParseDiagnostic = struct {
         line: u32,
         col: u32,
     },
+
+    // TODO: get file name from ctx somehow
+    pub fn format(self: @This()) []const u8 {
+
+    }
 };
 
 pub const ParseCtx = struct {
@@ -209,8 +214,10 @@ pub const Ifc = struct {
     const Self = @This();
 
     pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Self {
+        const iso = try ctx.nextIdentSkipWs();
+        try ctx.expectTerminator();
         return Self{
-            .iso = "",
+            .iso = iso,
             .header = try Header.parse(ctx, opts),
             .data = .{
                 .objects = &.{},
