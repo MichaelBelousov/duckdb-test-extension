@@ -4,10 +4,13 @@ const builtin = @import("builtin");
 const json = std.json;
 const FileBuffer = @import("./FileBuffer.zig");
 
-pub fn main(args: []const []const u8) void {
-    std.debug.assert(args.len >= 2);
-    const file = args[1];
-    const src = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), file);
+pub fn cliMain(argc: u32, argv: []const u8) void {
+    std.debug.assert(argc >= 2);
+    const file_path = argv[1];
+    const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), file_path);
+    const ctx = ParseCtx.start(file.buffer);
+    const parsed = Ifc.parse(&ctx, .{});
+    _ = parsed;
     // defer free
 }
 
@@ -47,12 +50,16 @@ pub const ParseCtx = struct {
 
     pub fn advance(self: *Self) ?u8 {
         const result = self.peekCurrent();
+
         if (result == '\n') {
             self.col = 0;
             self.line +|= 1;
         }
+
         self.col +|= 1;
         self.pos +|= 1;
+
+        return result;
     }
 
     pub fn expectAdvance(self: *Self) !u8 {
@@ -61,14 +68,14 @@ pub const ParseCtx = struct {
 
     /// advance until the next non-whitespace
     pub fn advanceSkipWs(self: *Self) ?u8 {
-        var curr = peekCurrent();
+        var curr = self.peekCurrent();
 
         while (curr != null) : (curr = self.advance()) {
             switch (curr.?) {
                 ' ', '\n', '\t' => {
                     continue;
                 },
-                _ => break,
+                else => break,
             }
         }
 
@@ -81,17 +88,18 @@ pub const ParseCtx = struct {
         return std.mem.eql(u8, self.src[self.pos .. self.pos + token.len], token);
     }
 
-    pub fn expectTerminator(self: *Self, token: []const u8) !void {
+    pub fn expectTerminator(self: *Self) !void {
         if (!try self.nextTokenSkipWs(";"))
             return error.MissingTerminator;
         try self.consumeToken(";");
     }
 
-    /// consume a token (advance by its length)
+    /// consume a known token (advance by its length)
+    /// use nextTokenSkipWs to confirm it first
     pub fn consumeToken(self: *Self, token: []const u8) !void {
         var i = token.len;
         while (i > 0) : (i -= 1) {
-            try self.advance();
+            _ = try self.expectAdvance();
         }
     }
 
@@ -113,7 +121,7 @@ pub const ParseCtx = struct {
                 => {
                     continue;
                 },
-                _ => break,
+                else => break,
             }
         }
 
@@ -160,57 +168,58 @@ pub const ParseOpts = struct {
 };
 
 pub const Ifc = struct {
-    iso: []const u8,
-
-    header: struct {
+    const Header = struct {
         file_description: []const u8,
         file_name: []const u8,
         file_schema: []const u8,
 
-        const Self = @This();
-
-        pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Self {
+        pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Header {
             _ = opts;
             if (!try ctx.nextTokenSkipWs("HEADER"))
                 return error.MissingHeader;
-            ctx.consumeToken("HEADER");
-            ctx.expectTerminator();
+            try ctx.consumeToken("HEADER");
+            try ctx.expectTerminator();
 
             if (!try ctx.nextTokenSkipWs("FILE_DESCRIPTION"))
                 return error.MissingHeader;
-            ctx.consumeToken("FILE");
-            ctx.expectTerminator();
+            try ctx.consumeToken("FILE");
+            try ctx.expectTerminator();
 
             if (!try ctx.nextTokenSkipWs("ENDSEC"))
                 return error.MissingHeaderEndSec;
-            ctx.consumeToken("ENDSEC");
-            ctx.expectTerminator();
-        }
-    },
+            try ctx.consumeToken("ENDSEC");
+            try ctx.expectTerminator();
 
+            return Header{
+                .file_description = "",
+                .file_name = "",
+                .file_schema = "",
+            };
+        }
+    };
+
+    iso: []const u8,
+    header: Header,
     data: struct {
         objects: []const IfcObject,
     },
-};
 
-pub const Parser = struct {
     const Self = @This();
 
-    const Line = struct {};
-
-    pub fn init() Self {
-        return Self{};
-    }
-
-    pub fn parse(self: Self, src: []const u8) void {
-        _ = self;
-        _ = src;
+    pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Self {
+        return Self{
+            .iso = "",
+            .header = try Header.parse(ctx, opts),
+            .data = .{
+                .objects = &.{},
+            },
+        };
     }
 };
 
 test "geom" {
-    const src = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), "./test/data/test-ifc-1.ifc");
-    var parser = Parser.init();
-    const result = try parser.parse(src);
-    _ = result;
+    const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), "./test/data/test-ifc-1.ifc");
+    var ctx = ParseCtx.start(file.buffer);
+    const ifc = try Ifc.parse(&ctx, .{});
+    _ = ifc;
 }
