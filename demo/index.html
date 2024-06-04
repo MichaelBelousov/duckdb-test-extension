@@ -4,9 +4,17 @@
   <body>
     <main id="editor">
       <style>
+        html, body, :root {
+          font-family: sans-serif;
+          margin: 0;
+          padding: 0;
+        }
+
         main {
-          height: 100vh;
-          width: 100vw;
+          --padding: 0.5in;
+          padding: var(--padding);
+          height: calc(100vh - (2 * var(--padding)));
+          width: calc(100vw - (2 * var(--padding)));
 
           display: grid;
           grid-template-rows: auto auto auto 1fr 3fr;
@@ -28,6 +36,12 @@
           position: absolute;
           top: 0px;
           left: 0px;
+          color: white;
+          pointer-events: none;
+        }
+
+        #drop-overlay * {
+          text-align: center;
         }
 
         .center  {
@@ -37,8 +51,8 @@
         }
       </style>
 
-      <h3 style="margin-bottom: 0px">Query an <code>.ifc</code> file!</h3>
-      <em>Drag and drop an <code>.ifc</code> file to use it for querying</em>
+      <h3 style="margin-bottom: 0px">Use SQL on an <code>.ifc</code> file!</h3>
+      <em>Query <a href="https://github.com/buildingSMART/Sample-Test-Files/tree/master/IFC%204.3/LinearPlacement_1">the default file</a> or drag and drop a new <code>.ifc</code> file to query that</em>
 
       <br/>
 
@@ -51,9 +65,9 @@
         </tr>
       </table>
 
-      <div id="drop-overlay" style="opacity: 0">
-        <strong class="center" style="font-size: 2rem">
-          It must be an <code>.ifc</code> file!
+      <div class="center" id="drop-overlay" style="opacity: 0">
+        <strong style="font-size: 2rem">
+          error, report this!
         </strong>
       </div>
 
@@ -66,7 +80,7 @@
         localStorage.setItem("query_history", JSON.stringify(history));
       };
 
-      const main = document.querySelector("main")[0];
+      const main = document.querySelector("main");
       const input = document.getElementById("query-input");
       const queryResults = document.getElementById("query-results");
       const dropOverlay = document.getElementById("drop-overlay");
@@ -84,7 +98,7 @@
       }
 
       input.addEventListener("keydown", (e) => {
-        const query = input.textContent.trim();
+        const query = input.value.trim();
 
         const isSubmit =
           (e.key === "Enter" && e.ctrlKey)
@@ -99,14 +113,14 @@
       main.addEventListener("dragenter", (e) => {
         e.preventDefault();
 
-        // TODO: also check mimetype
+        // NOTE: not allowed to check what was dragged in dragenter
         const hasExactlyOneIfc = [...e.dataTransfer.items]
-          .filter((file) => file.name.endsWith(".ifc"));
+          .filter((item) => item.kind === "file");
 
         if (hasExactlyOneIfc)
-          dropOverlay.innerHTML = `Drop to load your <code>.ifc</code> file!`;
+          dropOverlay.firstElementChild.innerHTML = `Drop to load your&nbsp;<code>.ifc</code>&nbsp;file!`;
         else
-          dropOverlay.innerHTML = `You must drag in exactly 1  <code>.ifc</code> file!`;
+          dropOverlay.firstElementChild.innerHTML = `You must drag in exactly 1  <code>.ifc</code> file!`;
 
         dropOverlay.style.opacity = 1;
       });
@@ -122,13 +136,23 @@
 
         if (!e.dataTransfer.items) return;
 
-        for (const item of [...e.dataTransfer.items]) {
-          if (item.kind === "file") {
-            const file = item.getAsFile();
+        for (const item of e.dataTransfer.items) {
+          const file = item.kind === "file" && item.getAsFile();
+          if (file.name.endsWith(".ifc")) {
             console.log(file);
             break;
+          } else {
+            alert(`You dropped an unexpected file '${file && file.name}',\nit must have an extension of .ifc`);
           }
         }
+
+        return false;
+      });
+
+      main.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropOverlay.style.opacity = 1;
+        return false;
       });
     </script>
   </body>
