@@ -52,7 +52,7 @@ pub fn free(self: Self, alloc: std.mem.Allocator) void {
             alloc.free(self.buffer);
         },
         else => {
-            std.os.munmap(@alignCast(self.buffer));
+            std.posix.munmap(@alignCast(self.buffer));
         },
     }
 }

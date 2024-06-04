@@ -7,11 +7,13 @@ const FileBuffer = @import("./FileBuffer.zig");
 pub fn cliMain(argc: u32, argv: []const u8) void {
     std.debug.assert(argc >= 2);
     const file_path = argv[1];
+
     const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), file_path);
+    defer file.free(t.allocator);
+
     const ctx = ParseCtx.start(file.buffer);
     const parsed = Ifc.parse(&ctx, .{});
     _ = parsed;
-    // defer free
 }
 
 // TODO: generate types from object model
@@ -218,8 +220,10 @@ pub const Ifc = struct {
 };
 
 test "geom" {
-    const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), "./test/data/test-ifc-1.ifc");
+    const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), "./test/data/UT_LinearPlacement_1.ifc");
+    defer file.free(t.allocator);
     var ctx = ParseCtx.start(file.buffer);
     const ifc = try Ifc.parse(&ctx, .{});
-    _ = ifc;
+
+    try t.expectEqualStrings(ifc.header.file_name, "./test/data/UT_LinearPlacement_1.ifc");
 }
