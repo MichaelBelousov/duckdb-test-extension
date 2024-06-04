@@ -3,6 +3,8 @@ const t = std.testing;
 const builtin = @import("builtin");
 const json = std.json;
 const FileBuffer = @import("./FileBuffer.zig");
+const Loc = @import("./loc.zig").Loc;
+const SpacePrint = @import("./loc.zig").SpacePrint;
 
 pub fn cliMain(argc: u32, argv: []const u8) void {
     std.debug.assert(argc >= 2);
@@ -11,7 +13,7 @@ pub fn cliMain(argc: u32, argv: []const u8) void {
     const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), file_path);
     defer file.free(t.allocator);
 
-    const ctx = ParseCtx.start(file.buffer);
+    const ctx = ParseCtx.start("UT_LinearPlacement_1.ifc", file.buffer);
     const parsed = Ifc.parse(&ctx, .{});
     _ = parsed;
 }
@@ -24,34 +26,62 @@ pub const IfcObject = struct {
     references: []const u8,
 };
 
-pub const ParseDiagnostic = struct {
-    message: []const u8,
-    location: struct {
-        line: u32,
-        col: u32,
-    },
+const ParseDiagnostic = struct {
+    message: []const u8 = "",
 
-    // TODO: get file name from ctx somehow
-    pub fn format(self: @This()) []const u8 {
+    // FIXME: share this data with context somehow
+    loc: Loc = .{},
+    src: []const u8 = "",
 
+    pub fn format(
+        self: @This(),
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = options;
+        _ = fmt;
+        // FIXME: this only works when the diagnostics are a private field
+        try writer.print(
+            \\{s}
+            \\ at {}
+            \\  | {s}
+            \\    {}^
+            \\
+        , .{ self.message, self.loc, try self.loc.containing_line(self.src), SpacePrint.init(self.loc.col - 2) });
     }
 };
 
 pub const ParseCtx = struct {
+    src_name: []const u8 = "UNKNOWN SOURCE",
     src: []const u8,
 
+    // TODO: use loc instead
     pos: u32,
     line: u32,
     col: u32,
 
+    diagnostics: ParseDiagnostic,
+
     const Self = @This();
 
-    pub fn start(src: []const u8) Self {
+    pub fn as_loc(self: Self) Loc {
+        return Loc{
+            .line = self.line,
+            .col = self.col,
+            .index = self.pos,
+            .source_ref = self.src_name,
+        };
+    }
+
+    pub fn start(name: []const u8, src: []const u8) Self {
         return Self{
+            .src_name = name,
             .src = src,
             .pos = 0,
             .line = 1,
             .col = 1,
+            .diagnostics = .{},
         };
     }
 
@@ -91,7 +121,9 @@ pub const ParseCtx = struct {
 
     pub fn nextTokenSkipWs(self: *Self, token: []const u8) !bool {
         const curr = self.advanceSkipWs();
-        if (curr == null) return error.UnexpectedEof;
+        if (curr == null) {
+            return error.UnexpectedEof;
+        }
         return std.mem.eql(u8, self.src[self.pos .. self.pos + token.len], token);
     }
 
@@ -170,9 +202,7 @@ pub const ParseCtx = struct {
     }
 };
 
-pub const ParseOpts = struct {
-    diagnostics: ?*ParseDiagnostic = null,
-};
+pub const ParseOpts = struct {};
 
 pub const Ifc = struct {
     const Header = struct {
@@ -214,6 +244,14 @@ pub const Ifc = struct {
     const Self = @This();
 
     pub fn parse(ctx: *ParseCtx, opts: ParseOpts) !Self {
+        // FIXME: need to better control the parse entry point
+        // so that it's more self contained that diagnostics must be set up
+        errdefer |e| {
+            ctx.diagnostics.message = @errorName(e);
+            ctx.diagnostics.loc = ctx.as_loc();
+            ctx.diagnostics.src = ctx.src;
+            std.debug.print("{}", .{ctx.diagnostics});
+        }
         const iso = try ctx.nextIdentSkipWs();
         try ctx.expectTerminator();
         return Self{
@@ -229,7 +267,7 @@ pub const Ifc = struct {
 test "geom" {
     const file = try FileBuffer.fromDirAndPath(t.allocator, std.fs.cwd(), "./test/data/UT_LinearPlacement_1.ifc");
     defer file.free(t.allocator);
-    var ctx = ParseCtx.start(file.buffer);
+    var ctx = ParseCtx.start("UT_LinearPlacement_1.ifc", file.buffer);
     const ifc = try Ifc.parse(&ctx, .{});
 
     try t.expectEqualStrings(ifc.header.file_name, "./test/data/UT_LinearPlacement_1.ifc");
